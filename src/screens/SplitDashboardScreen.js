@@ -8,12 +8,13 @@ import Card from '../components/Card';
 import { colors } from '../theme';
 import { useSplitPay } from '../data/SplitPayContext';
 import { getSignaturesForAddress } from '../utils/solanaRpc';
+import { buildSolanaPayUrl } from '../utils/solanaPay';
 import { eur, sol } from '../utils/format';
 
 const POLL_MS = 4000;
 
 export default function SplitDashboardScreen({ navigation }) {
-  const { activeSplit, markParticipantPaid } = useSplitPay();
+  const { activeSplit, markParticipantPaid, walletAddress, refreshBalance } = useSplitPay();
   const [expanded, setExpanded] = useState(null);
   const pollRef = useRef(null);
 
@@ -27,6 +28,7 @@ export default function SplitDashboardScreen({ navigation }) {
           const sigs = await getSignaturesForAddress(p.referenceKey, { limit: 1 });
           if (sigs?.length > 0) {
             markParticipantPaid(p.name);
+            refreshBalance();
           }
         } catch { /* silent — keep polling */ }
       }
@@ -107,7 +109,14 @@ export default function SplitDashboardScreen({ navigation }) {
               <View style={styles.qrSection}>
                 <Text style={styles.qrLabel}>Show this QR to {p.name}</Text>
                 <View style={styles.qrBox}>
-                  <QRCode value={p.payUrl} size={200} />
+                  <QRCode value={buildSolanaPayUrl({
+                    recipient: walletAddress,
+                    amountSol: activeSplit.eachSol.toFixed(5),
+                    label: 'SplitPay',
+                    message: `Split bill — ${p.name}`,
+                    memo: `splitpay-${p.name}`,
+                    reference: p.referenceKey,
+                  })} size={200} />
                 </View>
                 <Text style={styles.qrAmount}>{sol(activeSplit.eachSol)} · Devnet</Text>
                 <Text style={styles.qrHint}>

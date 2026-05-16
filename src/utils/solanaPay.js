@@ -27,10 +27,8 @@ export function parseSolanaPayUrl(url) {
 }
 
 export async function openSolanaPayUrl(url) {
-  // Real Devnet transaction attempt concept:
-  // A compatible wallet such as Phantom can read this Solana Pay transfer URL and compose the transfer.
-  // Devnet depends on the wallet/network setup. The app then shows a mocked success screen for stage reliability.
-  const canOpen = await Linking.canOpenURL(url);
-  if (canOpen) return Linking.openURL(url);
-  return Linking.openURL(`https://phantom.app/ul/browse/${encodeURIComponent(url)}?ref=${encodeURIComponent('https://splitpay.demo')}`);
+  // Open the solana: URL directly — Phantom registers itself as the handler for this scheme.
+  // Skipping canOpenURL because Android 11+ package visibility rules cause it to return false
+  // for custom schemes even when Phantom is installed, which would trigger a broken fallback.
+  return Linking.openURL(url);
 }

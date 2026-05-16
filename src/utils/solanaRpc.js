@@ -17,8 +17,20 @@ export async function getBalance(address) {
   return result.value / 1e9;
 }
 
-// Returns array of confirmed signatures for the address.
-// For Solana Pay reference keys: if length > 0, the payment has been made.
 export async function getSignaturesForAddress(address, { limit = 1 } = {}) {
   return call('getSignaturesForAddress', [address, { limit, commitment: 'confirmed' }]);
+}
+
+// Returns the sender address of the most recent incoming tx for receiverAddress, or null.
+export async function getRecentSender(receiverAddress) {
+  try {
+    const sigs = await call('getSignaturesForAddress', [receiverAddress, { limit: 1, commitment: 'confirmed' }]);
+    if (!sigs?.length) return null;
+    const tx = await call('getTransaction', [sigs[0].signature, { encoding: 'json', maxSupportedTransactionVersion: 0 }]);
+    const accounts = tx?.transaction?.message?.accountKeys;
+    if (!accounts) return null;
+    return accounts.find(a => a !== receiverAddress) || null;
+  } catch {
+    return null;
+  }
 }

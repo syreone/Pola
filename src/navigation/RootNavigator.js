@@ -6,20 +6,22 @@ import RequestMoneyScreen from '../screens/RequestMoneyScreen';
 import SendMoneyScreen from '../screens/SendMoneyScreen';
 import SplitBillScreen from '../screens/SplitBillScreen';
 import SplitDashboardScreen from '../screens/SplitDashboardScreen';
+import HistoryScreen from '../screens/HistoryScreen';
 import SuccessScreen from '../screens/SuccessScreen';
 
 const Stack = createNativeStackNavigator();
 
 export default function RootNavigator() {
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Navigator id="Root" screenOptions={{ headerShown: false }}>
       <Stack.Screen name="ConnectWallet" component={ConnectWalletScreen} />
       <Stack.Screen name="MainTabs" component={MainTabs} />
       <Stack.Screen name="RequestMoney" component={RequestMoneyScreen} />
       <Stack.Screen name="SendMoney" component={SendMoneyScreen} />
       <Stack.Screen name="SplitBill" component={SplitBillScreen} />
       <Stack.Screen name="SplitDashboard" component={SplitDashboardScreen} />
-      <Stack.Screen name="Success" component={SuccessScreen} />
+      <Stack.Screen name="History" component={HistoryScreen} />
+      <Stack.Screen name="Success" component={SuccessScreen} options={{ presentation: 'transparentModal' }} />
     </Stack.Navigator>
   );
 }

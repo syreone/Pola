@@ -8,6 +8,7 @@ const SplitPayContext = createContext(null);
 
 export function SplitPayProvider({ children }) {
   const [walletAddress, setWalletAddress] = useState(null);
+  const [displayName, setDisplayName] = useState(null);
   const [walletBalance, setWalletBalance] = useState(null);
   const [connecting, setConnecting] = useState(false);
   const [transactions, setTransactions] = useState(initialTransactions);
@@ -42,20 +43,30 @@ export function SplitPayProvider({ children }) {
 
   const connectPhantom = async () => {
     setConnecting(true);
-    const url = buildPhantomConnectUrl();
-    const canOpen = await Linking.canOpenURL(url);
-    if (canOpen) {
-      await Linking.openURL(url);
-    } else {
-      // Phantom not installed — open App Store / Play Store page
-      await Linking.openURL('https://phantom.app/download');
+    try {
+      const url = buildPhantomConnectUrl();
+      const canOpen = await Linking.canOpenURL(url);
+      if (canOpen) {
+        await Linking.openURL(url);
+      } else {
+        await Linking.openURL('https://phantom.app/download');
+        setConnecting(false);
+      }
+    } catch (e) {
+      console.warn('Phantom connect error:', e.message);
       setConnecting(false);
     }
+  };
+
+  const setWalletManually = (address, name = null) => {
+    setWalletAddress(address);
+    if (name) setDisplayName(name);
   };
 
   const disconnect = () => {
     setWalletAddress(null);
     setWalletBalance(null);
+    setDisplayName(null);
   };
 
   const refreshBalance = useCallback(async () => {
@@ -82,12 +93,12 @@ export function SplitPayProvider({ children }) {
   }, []);
 
   const addTransaction = useCallback((transaction) => {
-    setTransactions(current => [{ id: `${Date.now()}`, date: 'Just now', ...transaction }, ...current]);
+    setTransactions(current => [{ id: `${Date.now()}`, timestamp: Date.now(), ...transaction }, ...current]);
   }, []);
 
   const value = useMemo(() => ({
-    walletAddress, walletBalance, connecting,
-    connectPhantom, disconnect, refreshBalance,
+    walletAddress, displayName, walletBalance, connecting,
+    connectPhantom, disconnect, refreshBalance, setWalletManually,
     transactions, addTransaction,
     activeSplit, startSplit, clearSplit, markParticipantPaid,
   }), [walletAddress, walletBalance, connecting, transactions, activeSplit,
