@@ -49,7 +49,7 @@ export default function ConnectWalletScreen({ navigation }) {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={[styles.hero, { backgroundColor: 'transparent' }]}>
+          <View style={styles.hero}>
             <Image
               source={isDark
                 ? require('../../assets/pola-logo-dark.png')
@@ -127,15 +127,17 @@ const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
     padding: 24,
-    paddingTop: 72,
-    paddingBottom: 48,
+    paddingTop: 40,
+    paddingBottom: 32,
   },
   hero: {
-    marginBottom: 28,
+    marginBottom: 12,
+    alignItems: 'center',
+    width: '100%',
   },
   logoImage: {
-    width: 220,
-    height: 180,
+    width: '100%',
+    height: 240,
     marginBottom: 4,
     backgroundColor: 'transparent',
   },

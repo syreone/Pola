@@ -88,24 +88,28 @@ export default function HomeScreen({ navigation }) {
         >
           {/* Header */}
           <View style={styles.header}>
-            <View style={styles.headerLeft}>
-              <View style={[styles.greetingRow, { backgroundColor: 'transparent' }]}>
-                <Image
-                  source={require('../../assets/pola-icon.png')}
-                  style={styles.headerLogo}
-                  resizeMode="contain"
-                  fadeDuration={0}
-                />
-                <Text style={[styles.greeting, { color: colors.muted }]}>Welcome back</Text>
+            <View style={styles.headerBrand}>
+              <Image
+                source={require('../../assets/pola-icon.png')}
+                style={styles.headerLogo}
+                resizeMode="contain"
+                fadeDuration={0}
+              />
+              <View style={styles.headerText}>
+                <Text style={[displayName ? styles.greeting : styles.greetingNoName, { color: colors.muted }]}>
+                  Welcome back
+                </Text>
+                {displayName ? (
+                  <Text
+                    style={[styles.name, { color: colors.text }]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.7}
+                  >
+                    {displayName}
+                  </Text>
+                ) : null}
               </View>
-              <Text
-                style={[styles.name, { color: colors.text }]}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.7}
-              >
-                {displayName || 'Your Wallet'}
-              </Text>
             </View>
             <View style={styles.headerRight}>
               <TouchableOpacity
@@ -204,12 +208,13 @@ const styles = StyleSheet.create({
   wrapper: { flex: 1 },
   content: { padding: 20, paddingTop: 58, paddingBottom: 40 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 },
-  headerLeft: { flex: 1, marginRight: 12 },
   headerRight: { flexDirection: 'row', gap: 8 },
-  greetingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 },
-  headerLogo: { width: 32, height: 32, backgroundColor: 'transparent' },
-  greeting: { fontSize: 13, fontWeight: '600' },
-  name: { fontSize: 26, fontWeight: '900' },
+  headerBrand: { flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1, marginRight: 12 },
+  headerLogo: { width: 62, height: 62, backgroundColor: 'transparent' },
+  headerText: { flex: 1, gap: 3 },
+  greeting: { fontSize: 15, fontWeight: '600' },
+  greetingNoName: { fontSize: 22, fontWeight: '800' },
+  name: { fontSize: 24, fontWeight: '900' },
   iconBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   balanceCard: { marginBottom: 14, gap: 4 },
   balanceLabel: { fontSize: 13, fontWeight: '700' },
