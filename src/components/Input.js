@@ -1,9 +1,33 @@
 import React from 'react';
 import { TextInput, StyleSheet } from 'react-native';
-import { colors } from '../theme';
+import { useTheme } from '../context/ThemeContext';
 
 export default function Input({ style, ...props }) {
-  return <TextInput placeholderTextColor={colors.muted} style={[styles.input, style]} {...props} />;
+  const { colors } = useTheme();
+  return (
+    <TextInput
+      placeholderTextColor={colors.muted}
+      style={[
+        styles.input,
+        {
+          backgroundColor: colors.card,
+          borderColor: colors.cardBorder,
+          color: colors.text,
+        },
+        style,
+      ]}
+      {...props}
+    />
+  );
 }
 
-const styles = StyleSheet.create({ input: { backgroundColor: '#fff', borderWidth: 1, borderColor: colors.border, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, color: colors.text, marginBottom: 12 } });
+const styles = StyleSheet.create({
+  input: {
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    marginBottom: 12,
+  },
+});

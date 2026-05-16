@@ -7,7 +7,6 @@ import SendMoneyScreen from '../screens/SendMoneyScreen';
 import SplitBillScreen from '../screens/SplitBillScreen';
 import SplitDashboardScreen from '../screens/SplitDashboardScreen';
 import HistoryScreen from '../screens/HistoryScreen';
-import SuccessScreen from '../screens/SuccessScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -21,7 +20,6 @@ export default function RootNavigator() {
       <Stack.Screen name="SplitBill" component={SplitBillScreen} />
       <Stack.Screen name="SplitDashboard" component={SplitDashboardScreen} />
       <Stack.Screen name="History" component={HistoryScreen} />
-      <Stack.Screen name="Success" component={SuccessScreen} options={{ presentation: 'transparentModal' }} />
     </Stack.Navigator>
   );
 }
