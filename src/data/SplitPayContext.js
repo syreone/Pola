@@ -1,11 +1,14 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import * as Linking from 'expo-linking';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { initialTransactions } from './mockData';
 import { buildPhantomConnectUrl, decryptPhantomPayload } from '../utils/phantom';
 import { getBalance, getRecentSender } from '../utils/solanaRpc';
 
 const SplitPayContext = createContext(null);
+const STORAGE_ACTIVE = '@splitpay_active_splits';
+const STORAGE_HISTORY = '@splitpay_split_history';
 
 export function SplitPayProvider({ children }) {
   const [walletAddress, setWalletAddress] = useState(null);
@@ -13,14 +16,29 @@ export function SplitPayProvider({ children }) {
   const [walletBalance, setWalletBalance] = useState(null);
   const [connecting, setConnecting] = useState(false);
   const [transactions, setTransactions] = useState(initialTransactions);
-  // activeSplit: { sessionId, totalEur, eachSol, participants: [{ name, referenceKey, payUrl, status }] }
-  const [activeSplit, setActiveSplit] = useState(null);
+  const [activeSplits, setActiveSplits] = useState([]);
+  const [splitHistory, setSplitHistory] = useState([]);
   const [notification, setNotification] = useState(null);
 
-  // Global incoming-payment polling
   const rxBaselineRef = useRef(null);
   const rxPollRef = useRef(null);
   const rxDetectedRef = useRef(false);
+
+  // Persist splits to AsyncStorage
+  useEffect(() => {
+    AsyncStorage.getItem(STORAGE_ACTIVE).then(v => {
+      if (v) { try { setActiveSplits(JSON.parse(v)); } catch { /* silent */ } }
+    });
+    AsyncStorage.getItem(STORAGE_HISTORY).then(v => {
+      if (v) { try { setSplitHistory(JSON.parse(v)); } catch { /* silent */ } }
+    });
+  }, []);
+
+  useEffect(() => { AsyncStorage.setItem(STORAGE_ACTIVE, JSON.stringify(activeSplits)); }, [activeSplits]);
+  useEffect(() => { AsyncStorage.setItem(STORAGE_HISTORY, JSON.stringify(splitHistory)); }, [splitHistory]);
+
+  // Backward-compat alias
+  const activeSplit = activeSplits[0] ?? null;
 
   const handleDeepLink = useCallback(({ url }) => {
     if (!url) return;
@@ -76,6 +94,7 @@ export function SplitPayProvider({ children }) {
     setDisplayName(null);
   };
 
+  // Global incoming-payment polling
   useEffect(() => {
     if (!walletAddress) return;
     rxBaselineRef.current = null;
@@ -115,24 +134,51 @@ export function SplitPayProvider({ children }) {
   const triggerNotification = useCallback((notif) => setNotification(notif), []);
   const dismissNotification = useCallback(() => {
     setNotification(null);
-    // Reset rx polling baseline so next payment can be detected
     rxDetectedRef.current = false;
     rxBaselineRef.current = null;
   }, []);
 
-  const startSplit = useCallback((split) => setActiveSplit(split), []);
-  const clearSplit = useCallback(() => setActiveSplit(null), []);
-
-  const markParticipantPaid = useCallback((name) => {
-    setActiveSplit(prev => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        participants: prev.participants.map(p =>
-          p.name === name ? { ...p, status: 'paid' } : p
-        ),
-      };
+  const startSplit = useCallback((split) => {
+    setActiveSplits(prev => {
+      if (prev.length >= 2) return prev;
+      return [split, ...prev];
     });
+  }, []);
+
+  const clearSplit = useCallback((sessionId) => {
+    if (!sessionId) {
+      console.warn('clearSplit expects a sessionId');
+      return;
+    }
+    setActiveSplits(prev => prev.filter(s => s.sessionId !== sessionId));
+  }, []);
+
+  const completeSplit = useCallback((sessionId) => {
+    setActiveSplits(prev => {
+      const session = prev.find(s => s.sessionId === sessionId);
+      if (session) setSplitHistory(h => [{ ...session, completedAt: Date.now() }, ...h]);
+      return prev.filter(s => s.sessionId !== sessionId);
+    });
+  }, []);
+
+  const markParticipantPaid = useCallback((sessionId, name) => {
+    setActiveSplits(prev => prev.map(s =>
+      s.sessionId !== sessionId ? s : {
+        ...s,
+        participants: s.participants.map(p => p.name === name ? { ...p, status: 'paid' } : p),
+      }
+    ));
+  }, []);
+
+  const markParticipantScanned = useCallback((sessionId, name) => {
+    setActiveSplits(prev => prev.map(s =>
+      s.sessionId !== sessionId ? s : {
+        ...s,
+        participants: s.participants.map(p =>
+          p.name === name && p.status === 'pending' ? { ...p, status: 'scanned' } : p
+        ),
+      }
+    ));
   }, []);
 
   const addTransaction = useCallback((transaction) => {
@@ -143,11 +189,18 @@ export function SplitPayProvider({ children }) {
     walletAddress, displayName, walletBalance, connecting,
     connectPhantom, disconnect, refreshBalance, setWalletManually,
     transactions, addTransaction,
-    activeSplit, startSplit, clearSplit, markParticipantPaid,
+    activeSplit, activeSplits, splitHistory,
+    startSplit, clearSplit, completeSplit,
+    markParticipantPaid, markParticipantScanned,
     notification, triggerNotification, dismissNotification,
-  }), [walletAddress, walletBalance, connecting, transactions, activeSplit,
-      refreshBalance, addTransaction, startSplit, clearSplit, markParticipantPaid,
-      notification, triggerNotification, dismissNotification]);
+  }), [
+    walletAddress, displayName, walletBalance, connecting,
+    transactions, activeSplit, activeSplits, splitHistory,
+    refreshBalance, addTransaction,
+    startSplit, clearSplit, completeSplit,
+    markParticipantPaid, markParticipantScanned,
+    notification, triggerNotification, dismissNotification,
+  ]);
 
   return <SplitPayContext.Provider value={value}>{children}</SplitPayContext.Provider>;
 }
