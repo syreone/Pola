@@ -3,15 +3,15 @@ import { TextInput, StyleSheet } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 
 export default function Input({ style, ...props }) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   return (
     <TextInput
       placeholderTextColor={colors.muted}
       style={[
         styles.input,
         {
-          backgroundColor: colors.card,
-          borderColor: colors.cardBorder,
+          backgroundColor: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(224,232,255,0.55)',
+          borderColor: isDark ? 'rgba(255,255,255,0.16)' : 'rgba(100,140,255,0.30)',
           color: colors.text,
         },
         style,

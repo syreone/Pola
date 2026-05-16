@@ -13,8 +13,8 @@ import { useSplitPay } from '../data/SplitPayContext';
 export default function RequestMoneyScreen({ navigation }) {
   const { colors } = useTheme();
   const { walletAddress } = useSplitPay();
-  const [amount, setAmount] = useState('10');
-  const [note, setNote] = useState('SplitPay request');
+  const [amount, setAmount] = useState(' ');
+  const [note, setNote] = useState(' ');
 
   const amountSol = useMemo(() => eurToDemoSol(amount), [amount]);
   const url = useMemo(

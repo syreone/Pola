@@ -1,4 +1,5 @@
 export const eur = (value) => `€${Number(value || 0).toFixed(2)}`;
+export const mkd = (value) => `${Number(value || 0).toFixed(0)} ден`;
 export const sol = (value) => `${Number(value || 0).toFixed(4)} SOL`;
 
 export function relativeTime(timestamp) {
