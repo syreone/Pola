@@ -3,8 +3,8 @@ import { View, Text, StyleSheet, ActivityIndicator, Platform } from 'react-nativ
 import { BlurView } from 'expo-blur';
 import Button from '../components/Button';
 import { useTheme } from '../context/ThemeContext';
-import { getBalance } from '../utils/solanaRpc';
-import { sol } from '../utils/format';
+import { getUsdcBalance } from '../utils/solanaRpc';
+import { usdc } from '../utils/format';
 
 const POLL_MS = 2500;
 const TIMEOUT_MS = 60000;
@@ -29,7 +29,7 @@ export default function SuccessScreen({ navigation, route }) {
         return;
       }
       try {
-        const balance = await getBalance(senderAddress);
+        const balance = await getUsdcBalance(senderAddress);
         if (balance < senderPreTxBalance) {
           clearInterval(pollRef.current);
           setConfirmedBalance(balance);
@@ -63,7 +63,7 @@ export default function SuccessScreen({ navigation, route }) {
             <ActivityIndicator size="large" color={colors.primary} />
             <Text style={[styles.title, { color: colors.text }]}>Sending…</Text>
             <Text style={[styles.subtitle, { color: colors.muted }]}>
-              Waiting for the transaction to land on Solana Devnet.
+              Waiting for the transaction to confirm on Solana.
             </Text>
             {recipientAddress && (
               <Text style={styles.addrRow}>
@@ -85,17 +85,17 @@ export default function SuccessScreen({ navigation, route }) {
               <View style={styles.balanceRow}>
                 <View style={styles.balanceItem}>
                   <Text style={[styles.balanceLabel, { color: colors.muted }]}>Before</Text>
-                  <Text style={[styles.balanceValue, { color: colors.text }]}>{sol(senderPreTxBalance)}</Text>
+                  <Text style={[styles.balanceValue, { color: colors.text }]}>{usdc(senderPreTxBalance)}</Text>
                 </View>
                 <Text style={[styles.arrow, { color: colors.muted }]}>→</Text>
                 <View style={styles.balanceItem}>
                   <Text style={[styles.balanceLabel, { color: colors.muted }]}>After</Text>
-                  <Text style={[styles.balanceValue, { color: colors.danger }]}>{sol(confirmedBalance)}</Text>
+                  <Text style={[styles.balanceValue, { color: colors.danger }]}>{usdc(confirmedBalance)}</Text>
                 </View>
               </View>
             )}
             <Text style={[styles.subtitle, { color: colors.muted }]}>
-              Funds left your account and were confirmed on Solana Devnet.
+              Funds left your account and were confirmed on Solana.
             </Text>
             {recipientAddress && (
               <Text style={styles.addrRow}>

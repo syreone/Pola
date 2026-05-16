@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { Text, StyleSheet, ScrollView } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import Input from '../components/Input';
 import Button from '../components/Button';
@@ -7,19 +7,30 @@ import Card from '../components/Card';
 import ScreenBackground from '../components/ScreenBackground';
 import { useTheme } from '../context/ThemeContext';
 import { buildSolanaPayUrl } from '../utils/solanaPay';
-import { eurToDemoSol, sol } from '../utils/format';
+import { usdc, mkd } from '../utils/format';
+import { fetchRates, FALLBACK_RATES } from '../utils/priceService';
 import { useSplitPay } from '../data/SplitPayContext';
 
 export default function RequestMoneyScreen({ navigation }) {
   const { colors } = useTheme();
   const { walletAddress } = useSplitPay();
-  const [amount, setAmount] = useState(' ');
-  const [note, setNote] = useState(' ');
+  const [amountMkd, setAmountMkd] = useState('');
+  const [note, setNote] = useState('');
+  const [rates, setRates] = useState(null);
 
-  const amountSol = useMemo(() => eurToDemoSol(amount), [amount]);
+  useEffect(() => {
+    let alive = true;
+    fetchRates().then(r => { if (alive) setRates(r); });
+    return () => { alive = false; };
+  }, []);
+
+  const r = rates ?? FALLBACK_RATES;
+  const mkdValue = Number(amountMkd || 0);
+  const usdcValue = r.mkdPerUsdc > 0 ? mkdValue / r.mkdPerUsdc : 0;
+
   const url = useMemo(
-    () => buildSolanaPayUrl({ recipient: walletAddress, amountSol: amountSol.toFixed(5), message: note, memo: note }),
-    [walletAddress, amountSol, note]
+    () => buildSolanaPayUrl({ recipient: walletAddress, amountUsdc: usdcValue.toFixed(2), message: note, memo: note }),
+    [walletAddress, usdcValue, note]
   );
 
   return (
@@ -30,13 +41,23 @@ export default function RequestMoneyScreen({ navigation }) {
           Set an amount, show the QR to your friend, and you'll be notified when payment arrives.
         </Text>
 
-        <Input keyboardType="decimal-pad" value={amount} onChangeText={setAmount} placeholder="Amount in EUR" />
-        <Input value={note} onChangeText={setNote} placeholder="Note" />
+        <Input
+          keyboardType="decimal-pad"
+          value={amountMkd}
+          onChangeText={setAmountMkd}
+          placeholder="Amount in MKD"
+        />
+        <Input value={note} onChangeText={setNote} placeholder="Note (optional)" />
 
         <Card style={styles.qrCard}>
-          <Text style={[styles.big, { color: colors.text }]}>€{Number(amount || 0).toFixed(2)}</Text>
-          <Text style={[styles.sub, { color: colors.accent }]}>{sol(amountSol)} · Devnet</Text>
-          <QRCode value={url || 'https://splitpay.demo'} size={220} />
+          {/* MKD primary — large black */}
+          <Text style={[styles.bigMkd, { color: colors.text }]}>{mkd(mkdValue)}</Text>
+          {/* USDC secondary — small blue */}
+          <Text style={[styles.subUsdc, { color: colors.primary }]}>{usdc(usdcValue)}</Text>
+
+          <View style={styles.qrWrap}>
+            <QRCode value={url || 'https://splitpay.demo'} size={220} />
+          </View>
           <Text style={[styles.hint, { color: colors.muted }]}>Friend scans this with Phantom to pay you</Text>
         </Card>
 
@@ -47,11 +68,12 @@ export default function RequestMoneyScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 20, paddingTop: 58, paddingBottom: 32 },
+  content: { padding: 24, paddingTop: 58, paddingBottom: 32, gap: 16 },
   title: { fontSize: 30, fontWeight: '900' },
-  subtitle: { marginTop: 8, marginBottom: 18, lineHeight: 21 },
-  qrCard: { alignItems: 'center', gap: 12, marginBottom: 18 },
-  big: { fontSize: 38, fontWeight: '900' },
-  sub: { fontWeight: '800' },
-  hint: { marginTop: 4, textAlign: 'center' },
+  subtitle: { lineHeight: 21 },
+  qrCard: { alignItems: 'center', gap: 8, paddingVertical: 24, paddingHorizontal: 20 },
+  bigMkd: { fontSize: 42, fontWeight: '900', letterSpacing: -1 },
+  subUsdc: { fontSize: 16, fontWeight: '700' },
+  qrWrap: { alignItems: 'center', justifyContent: 'center', width: '100%', paddingVertical: 12 },
+  hint: { textAlign: 'center', lineHeight: 20 },
 });

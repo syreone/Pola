@@ -1,29 +1,18 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView,
-  RefreshControl, PanResponder, TouchableOpacity, Pressable,
+  RefreshControl, PanResponder, TouchableOpacity, Pressable, Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import Card from '../components/Card';
-import Button from '../components/Button';
 import ScreenBackground from '../components/ScreenBackground';
 import { useTheme } from '../context/ThemeContext';
 import { useSplitPay } from '../data/SplitPayContext';
-import { sol } from '../utils/format';
-
-function ShortAddress({ address, colors }) {
-  if (!address) return null;
-  return (
-    <Text style={styles.walletRow}>
-      <Text style={{ color: colors.primary, fontWeight: '700' }}>{address.slice(0, 6)}</Text>
-      <Text style={{ color: colors.muted, fontWeight: '700' }}>...</Text>
-      <Text style={{ color: colors.primary, fontWeight: '700' }}>{address.slice(-6)}</Text>
-    </Text>
-  );
-}
+import { usdc, mkd } from '../utils/format';
+import { fetchRates, FALLBACK_RATES } from '../utils/priceService';
 
 function ActionButton({ icon, label, onPress, colors, grad }) {
   const handlePress = () => {
@@ -51,7 +40,14 @@ function ActionButton({ icon, label, onPress, colors, grad }) {
 export default function HomeScreen({ navigation }) {
   const { colors, isDark, toggleTheme } = useTheme();
   const { walletAddress, displayName, walletBalance, refreshBalance, activeSplit, disconnect } = useSplitPay();
-  const [refreshing, setRefreshing] = React.useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [rates, setRates] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    fetchRates().then(r => { if (alive) setRates(r); });
+    return () => { alive = false; };
+  }, []);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -61,6 +57,8 @@ export default function HomeScreen({ navigation }) {
     }, [walletAddress])
   );
 
+  const r = rates ?? FALLBACK_RATES;
+  const balanceMkd = walletBalance !== null ? walletBalance * r.mkdPerUsdc : null;
   const activePending = activeSplit
     ? activeSplit.participants.filter(p => p.status === 'pending').length
     : 0;
@@ -91,7 +89,15 @@ export default function HomeScreen({ navigation }) {
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.headerLeft}>
-              <Text style={[styles.greeting, { color: colors.muted }]}>Welcome back</Text>
+              <View style={[styles.greetingRow, { backgroundColor: 'transparent' }]}>
+                <Image
+                  source={require('../../assets/pola-icon.png')}
+                  style={styles.headerLogo}
+                  resizeMode="contain"
+                  fadeDuration={0}
+                />
+                <Text style={[styles.greeting, { color: colors.muted }]}>Welcome back</Text>
+              </View>
               <Text
                 style={[styles.name, { color: colors.text }]}
                 numberOfLines={1}
@@ -119,17 +125,26 @@ export default function HomeScreen({ navigation }) {
 
           {/* Balance card */}
           <Card style={styles.balanceCard}>
-            <Text style={[styles.balanceLabel, { color: colors.muted }]}>Devnet balance</Text>
+            <Text style={[styles.balanceLabel, { color: colors.muted }]}>Balance</Text>
             <Text style={[styles.balanceAmount, { color: colors.text }]}>
-              {walletBalance !== null ? sol(walletBalance) : '—'}
+              {balanceMkd !== null ? mkd(balanceMkd) : '—'}
             </Text>
-            <View style={styles.balanceFooter}>
-              <View style={[styles.networkPill, { backgroundColor: colors.isDark ? 'rgba(59,130,246,0.18)' : 'rgba(37,99,235,0.10)' }]}>
-                <View style={[styles.networkDot, { backgroundColor: colors.primary }]} />
-                <Text style={[styles.networkText, { color: colors.primary }]}>Solana Devnet</Text>
+            <Text style={[styles.balanceUsdc, { color: colors.primary }]}>
+              {walletBalance !== null ? usdc(walletBalance) : ''}
+            </Text>
+
+            {/* Wallet address — prominently below balance */}
+            {walletAddress && (
+              <View style={[styles.addressBox, { backgroundColor: colors.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(37,99,235,0.06)', borderColor: colors.border }]}>
+                <Ionicons name="wallet-outline" size={14} color={colors.muted} style={{ marginRight: 6 }} />
+                <Text style={[styles.addressText, { color: colors.muted }]} numberOfLines={1}>
+                  <Text style={{ color: colors.primary, fontWeight: '800' }}>{walletAddress.slice(0, 8)}</Text>
+                  {'···'}
+                  <Text style={{ color: colors.primary, fontWeight: '800' }}>{walletAddress.slice(-8)}</Text>
+                </Text>
               </View>
-              <ShortAddress address={walletAddress} colors={colors} />
-            </View>
+            )}
+
           </Card>
 
           {/* Active split banner */}
@@ -191,17 +206,23 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 },
   headerLeft: { flex: 1, marginRight: 12 },
   headerRight: { flexDirection: 'row', gap: 8 },
-  greeting: { fontSize: 13, fontWeight: '600', marginBottom: 2 },
+  greetingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 },
+  headerLogo: { width: 32, height: 32, backgroundColor: 'transparent' },
+  greeting: { fontSize: 13, fontWeight: '600' },
   name: { fontSize: 26, fontWeight: '900' },
   iconBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-  balanceCard: { marginBottom: 14 },
-  balanceLabel: { fontSize: 13, fontWeight: '700', marginBottom: 6 },
-  balanceAmount: { fontSize: 42, fontWeight: '900', letterSpacing: -1 },
-  balanceFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 14 },
+  balanceCard: { marginBottom: 14, gap: 4 },
+  balanceLabel: { fontSize: 13, fontWeight: '700' },
+  balanceAmount: { fontSize: 42, fontWeight: '900', letterSpacing: -1, marginTop: 4 },
+  balanceUsdc: { fontSize: 16, fontWeight: '700', marginTop: 2 },
+  addressBox: {
+    flexDirection: 'row', alignItems: 'center', marginTop: 10,
+    borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1,
+  },
+  addressText: { fontSize: 13, fontWeight: '700', flex: 1 },
   networkPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
   networkDot: { width: 6, height: 6, borderRadius: 3 },
   networkText: { fontSize: 12, fontWeight: '800' },
-  walletRow: { fontSize: 13 },
   splitBanner: { marginBottom: 14 },
   splitBannerRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   splitIconWrap: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },

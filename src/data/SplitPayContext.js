@@ -4,7 +4,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { initialTransactions } from './mockData';
 import { buildPhantomConnectUrl, decryptPhantomPayload } from '../utils/phantom';
-import { getBalance, getRecentSender } from '../utils/solanaRpc';
+import { getUsdcBalance, getRecentSender } from '../utils/solanaRpc';
+import { FALLBACK_RATES } from '../utils/priceService';
 
 const SplitPayContext = createContext(null);
 const STORAGE_ACTIVE = '@splitpay_active_splits';
@@ -13,7 +14,7 @@ const STORAGE_HISTORY = '@splitpay_split_history';
 export function SplitPayProvider({ children }) {
   const [walletAddress, setWalletAddress] = useState(null);
   const [displayName, setDisplayName] = useState(null);
-  const [walletBalance, setWalletBalance] = useState(null);
+  const [walletBalance, setWalletBalance] = useState(null); // in USDC
   const [connecting, setConnecting] = useState(false);
   const [transactions, setTransactions] = useState(initialTransactions);
   const [activeSplits, setActiveSplits] = useState([]);
@@ -37,7 +38,6 @@ export function SplitPayProvider({ children }) {
   useEffect(() => { AsyncStorage.setItem(STORAGE_ACTIVE, JSON.stringify(activeSplits)); }, [activeSplits]);
   useEffect(() => { AsyncStorage.setItem(STORAGE_HISTORY, JSON.stringify(splitHistory)); }, [splitHistory]);
 
-  // Backward-compat alias
   const activeSplit = activeSplits[0] ?? null;
 
   const handleDeepLink = useCallback(({ url }) => {
@@ -94,39 +94,48 @@ export function SplitPayProvider({ children }) {
     setDisplayName(null);
   };
 
-  // Global incoming-payment polling
+  // Global balance polling — fetch immediately on connect, then every 5s
   useEffect(() => {
     if (!walletAddress) return;
     rxBaselineRef.current = null;
     rxDetectedRef.current = false;
-    rxPollRef.current = setInterval(async () => {
-      if (rxDetectedRef.current) return;
+
+    const fetchAndUpdate = async () => {
       try {
-        const current = await getBalance(walletAddress);
-        if (rxBaselineRef.current === null) { rxBaselineRef.current = current; return; }
-        if (current > rxBaselineRef.current) {
+        const current = await getUsdcBalance(walletAddress);
+        // Always update the displayed balance
+        setWalletBalance(current);
+        // On first run just record the baseline for incoming-payment detection
+        if (rxBaselineRef.current === null) {
+          rxBaselineRef.current = current;
+          return;
+        }
+        if (!rxDetectedRef.current && current > rxBaselineRef.current) {
           const diff = current - rxBaselineRef.current;
           rxDetectedRef.current = true;
-          setWalletBalance(current);
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           let senderAddr = null;
           try { senderAddr = await getRecentSender(walletAddress); } catch { /* silent */ }
           setTransactions(prev => [{
             id: `${Date.now()}`, timestamp: Date.now(), type: 'received',
-            title: 'Payment received', amountEur: diff * 140, amountSol: diff,
+            title: 'Payment received', amountUsdc: diff, amountMkd: diff * FALLBACK_RATES.mkdPerUsdc,
             note: 'Payment received', senderAddress: senderAddr, recipientAddress: walletAddress,
           }, ...prev]);
-          setNotification({ type: 'received', amountSol: diff, newBalance: current });
+          setNotification({ type: 'received', amountUsdc: diff, newBalance: current });
         }
       } catch { /* silent */ }
-    }, 3000);
+    };
+
+    // Fetch immediately so balance shows right after entering address
+    fetchAndUpdate();
+    rxPollRef.current = setInterval(fetchAndUpdate, 5000);
     return () => clearInterval(rxPollRef.current);
   }, [walletAddress]);
 
   const refreshBalance = useCallback(async () => {
     if (!walletAddress) return;
     try {
-      const b = await getBalance(walletAddress);
+      const b = await getUsdcBalance(walletAddress);
       setWalletBalance(b);
     } catch { /* silent */ }
   }, [walletAddress]);
@@ -170,35 +179,28 @@ export function SplitPayProvider({ children }) {
     ));
   }, []);
 
-  const markParticipantScanned = useCallback((sessionId, name) => {
-    setActiveSplits(prev => prev.map(s =>
-      s.sessionId !== sessionId ? s : {
-        ...s,
-        participants: s.participants.map(p =>
-          p.name === name && p.status === 'pending' ? { ...p, status: 'scanned' } : p
-        ),
-      }
-    ));
-  }, []);
-
   const addTransaction = useCallback((transaction) => {
     setTransactions(current => [{ id: `${Date.now()}`, timestamp: Date.now(), ...transaction }, ...current]);
+  }, []);
+
+  const clearSplitHistory = useCallback(() => {
+    setSplitHistory([]);
   }, []);
 
   const value = useMemo(() => ({
     walletAddress, displayName, walletBalance, connecting,
     connectPhantom, disconnect, refreshBalance, setWalletManually,
     transactions, addTransaction,
-    activeSplit, activeSplits, splitHistory,
+    activeSplit, activeSplits, splitHistory, clearSplitHistory,
     startSplit, clearSplit, completeSplit,
-    markParticipantPaid, markParticipantScanned,
+    markParticipantPaid,
     notification, triggerNotification, dismissNotification,
   }), [
     walletAddress, displayName, walletBalance, connecting,
-    transactions, activeSplit, activeSplits, splitHistory,
+    transactions, activeSplit, activeSplits, splitHistory, clearSplitHistory,
     refreshBalance, addTransaction,
     startSplit, clearSplit, completeSplit,
-    markParticipantPaid, markParticipantScanned,
+    markParticipantPaid,
     notification, triggerNotification, dismissNotification,
   ]);
 

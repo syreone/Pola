@@ -4,8 +4,8 @@ import { BlurView } from 'expo-blur';
 import Button from './Button';
 import { useTheme } from '../context/ThemeContext';
 import { useSplitPay } from '../data/SplitPayContext';
-import { getBalance } from '../utils/solanaRpc';
-import { sol } from '../utils/format';
+import { getUsdcBalance } from '../utils/solanaRpc';
+import { usdc } from '../utils/format';
 
 const POLL_MS = 2500;
 const TIMEOUT_MS = 60000;
@@ -42,7 +42,7 @@ export default function GlobalPaymentOverlay() {
         return;
       }
       try {
-        const balance = await getBalance(senderAddress);
+        const balance = await getUsdcBalance(senderAddress);
         if (balance < senderPreTxBalance) {
           clearInterval(pollRef.current);
           setConfirmedBalance(balance);
@@ -80,9 +80,8 @@ export default function GlobalPaymentOverlay() {
               <Text style={[styles.iconText, { color: colors.success }]}>✓</Text>
             </View>
             <Text style={[styles.title, { color: colors.text }]}>Payment Received!</Text>
-            <Text style={[styles.amount, { color: colors.success }]}>+{sol(notification.amountSol)}</Text>
-            <Text style={[styles.sub, { color: colors.muted }]}>≈ €{((notification.amountSol || 0) * 140).toFixed(2)}</Text>
-            <Text style={[styles.note, { color: colors.accent }]}>Confirmed on Solana Devnet</Text>
+            <Text style={[styles.amount, { color: colors.success }]}>+{usdc(notification.amountUsdc)}</Text>
+            <Text style={[styles.note, { color: colors.accent }]}>Confirmed on Solana</Text>
           </>
         )}
 
@@ -91,7 +90,7 @@ export default function GlobalPaymentOverlay() {
             <ActivityIndicator size="large" color={colors.primary} />
             <Text style={[styles.title, { color: colors.text }]}>Sending…</Text>
             <Text style={[styles.sub, { color: colors.muted }]}>
-              Waiting for the transaction to land on Solana Devnet.
+              Waiting for the transaction to confirm on Solana.
             </Text>
             {notification.recipientAddress && (
               <Text style={styles.addr}>
@@ -113,17 +112,17 @@ export default function GlobalPaymentOverlay() {
               <View style={styles.balanceRow}>
                 <View style={styles.balanceItem}>
                   <Text style={[styles.balanceLabel, { color: colors.muted }]}>Before</Text>
-                  <Text style={[styles.balanceValue, { color: colors.text }]}>{sol(notification.senderPreTxBalance)}</Text>
+                  <Text style={[styles.balanceValue, { color: colors.text }]}>{usdc(notification.senderPreTxBalance)}</Text>
                 </View>
                 <Text style={[styles.arrow, { color: colors.muted }]}>→</Text>
                 <View style={styles.balanceItem}>
                   <Text style={[styles.balanceLabel, { color: colors.muted }]}>After</Text>
-                  <Text style={[styles.balanceValue, { color: colors.danger }]}>{sol(confirmedBalance)}</Text>
+                  <Text style={[styles.balanceValue, { color: colors.danger }]}>{usdc(confirmedBalance)}</Text>
                 </View>
               </View>
             )}
             <Text style={[styles.sub, { color: colors.muted }]}>
-              Funds left your account and were confirmed on Solana Devnet.
+              Funds left your account and were confirmed on Solana.
             </Text>
             {notification.recipientAddress && (
               <Text style={styles.addr}>

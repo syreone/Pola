@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  Platform, KeyboardAvoidingView, ScrollView,
+  Platform, KeyboardAvoidingView, ScrollView, Image,
 } from 'react-native';
 import * as Linking from 'expo-linking';
 import Button from '../components/Button';
@@ -18,7 +18,7 @@ const STORE_URL = Platform.OS === 'ios'
 const STORE_NAME = Platform.OS === 'ios' ? 'App Store' : 'Play Store';
 
 export default function ConnectWalletScreen({ navigation }) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const { walletAddress, setWalletManually } = useSplitPay();
   const [showManual, setShowManual] = useState(false);
   const [manualAddress, setManualAddress] = useState('');
@@ -49,12 +49,15 @@ export default function ConnectWalletScreen({ navigation }) {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Logo / headline */}
-          <View style={styles.hero}>
-            <Text style={[styles.logo, { color: colors.primary }]}>SplitPay</Text>
-            <Text style={[styles.subtitle, { color: colors.muted }]}>
-              Split bills with friends on Solana Devnet.{'\n'}Connect your Phantom wallet to get started.
-            </Text>
+          <View style={[styles.hero, { backgroundColor: 'transparent' }]}>
+            <Image
+              source={isDark
+                ? require('../../assets/pola-logo-dark.png')
+                : require('../../assets/pola-logo-light.png')}
+              style={styles.logoImage}
+              resizeMode="contain"
+              fadeDuration={0}
+            />
           </View>
 
           {/* Card */}
@@ -92,7 +95,7 @@ export default function ConnectWalletScreen({ navigation }) {
                 <Input
                   value={manualAddress}
                   onChangeText={setManualAddress}
-                  placeholder="Your Solana wallet address"
+                  placeholder="Your wallet address"
                   autoCapitalize="none"
                   autoCorrect={false}
                   style={styles.fieldInput}
@@ -130,15 +133,11 @@ const styles = StyleSheet.create({
   hero: {
     marginBottom: 28,
   },
-  logo: {
-    fontSize: 44,
-    fontWeight: '900',
-    marginBottom: 10,
-    letterSpacing: -1,
-  },
-  subtitle: {
-    fontSize: 16,
-    lineHeight: 24,
+  logoImage: {
+    width: 220,
+    height: 180,
+    marginBottom: 4,
+    backgroundColor: 'transparent',
   },
   cardTitle: {
     fontSize: 22,

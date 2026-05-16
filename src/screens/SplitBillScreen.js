@@ -3,6 +3,9 @@ import {
   View, Text, StyleSheet, ScrollView,
   TouchableOpacity, TextInput, Modal,
 } from 'react-native';
+import ConfirmModal from '../components/ConfirmModal';
+import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import Card from '../components/Card';
 import Button from '../components/Button';
 import ScreenBackground from '../components/ScreenBackground';
@@ -10,56 +13,55 @@ import { useTheme } from '../context/ThemeContext';
 import { useSplitPay } from '../data/SplitPayContext';
 import { buildSolanaPayUrl } from '../utils/solanaPay';
 import { generateReferenceKey } from '../utils/phantom';
-import { eur, mkd, sol } from '../utils/format';
-import { fetchPrices, toSol, FALLBACK_PRICES } from '../utils/priceService';
+import { usdc, mkd } from '../utils/format';
+import { fetchRates, toUsdc, FALLBACK_RATES } from '../utils/priceService';
 
-const CURRENCIES = ['EUR', 'MKD', 'SOL'];
 const MODES = ['divide', 'fixed'];
 
 export default function SplitBillScreen({ navigation }) {
-  const { colors } = useTheme();
-  const { walletAddress, activeSplits, startSplit, splitHistory } = useSplitPay();
+  const { colors, isDark, toggleTheme } = useTheme();
+  const { walletAddress, activeSplits, startSplit, splitHistory, clearSplitHistory } = useSplitPay();
 
-  const [prices, setPrices] = useState(null);
-  const [currency, setCurrency] = useState('EUR');
+  const [rates, setRates] = useState(null);
   const [mode, setMode] = useState('divide');
+  const [title, setTitle] = useState('');
   const [totalAmount, setTotalAmount] = useState('');
   const [people, setPeople] = useState([]);
   const [nameInput, setNameInput] = useState('');
   const [amountInput, setAmountInput] = useState('');
   const [showUpgrade, setShowUpgrade] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const nameRef = useRef(null);
   const amtRef = useRef(null);
 
   useEffect(() => {
     let alive = true;
-    fetchPrices().then(p => { if (alive) setPrices(p); });
+    fetchRates().then(r => { if (alive) setRates(r); });
     return () => { alive = false; };
   }, []);
 
-  const p = prices ?? FALLBACK_PRICES;
+  const r = rates ?? FALLBACK_RATES;
   const count = people.length;
   const totalAmt = Number(totalAmount) || 0;
 
-  const totalSol = useMemo(() => {
-    if (mode === 'divide') return toSol(totalAmt, currency, p);
-    return people.reduce((acc, person) => acc + toSol(Number(person.amount) || 0, currency, p), 0);
-  }, [mode, totalAmt, currency, people, p]);
+  // All amounts entered in MKD, converted to USDC internally
+  const totalUsdc = useMemo(() => {
+    if (mode === 'divide') return toUsdc(totalAmt, 'MKD', r);
+    return people.reduce((acc, person) => acc + toUsdc(Number(person.amount) || 0, 'MKD', r), 0);
+  }, [mode, totalAmt, people, r]);
 
-  const eachSol = useMemo(() => {
+  const eachUsdc = useMemo(() => {
     if (mode !== 'divide' || count === 0) return 0;
-    return totalSol / count;
-  }, [mode, totalSol, count]);
+    return totalUsdc / (count + 1);
+  }, [mode, totalUsdc, count]);
 
-  const eachEur = eachSol * p.solInEur;
-  const eachMkd = eachSol * p.solInMkd;
-  const totalEur = totalSol * p.solInEur;
-  const totalMkd = totalSol * p.solInMkd;
+  const eachMkd = eachUsdc * r.mkdPerUsdc;
+  const totalMkd = totalUsdc * r.mkdPerUsdc;
 
   const recipient = walletAddress || '11111111111111111111111111111111';
 
-  const canGenerate = count >= 2 &&
+  const canGenerate = count >= 1 &&
     (mode === 'divide' ? totalAmt > 0 : people.every(person => Number(person.amount) > 0));
 
   const handleAdd = () => {
@@ -84,37 +86,52 @@ export default function SplitBillScreen({ navigation }) {
     if (activeSplits.length >= 2) { setShowUpgrade(true); return; }
     const sessionId = `split_${Date.now()}`;
     const participants = people.map(person => {
-      const participantSol = mode === 'fixed'
-        ? toSol(Number(person.amount) || 0, currency, p)
-        : eachSol;
+      const participantUsdc = mode === 'fixed'
+        ? toUsdc(Number(person.amount) || 0, 'MKD', r)
+        : eachUsdc;
       const referenceKey = generateReferenceKey();
       const payUrl = buildSolanaPayUrl({
         recipient,
-        amountSol: participantSol.toFixed(5),
-        label: 'SplitPay',
-        message: `Split bill — ${person.name}`,
+        amountUsdc: participantUsdc.toFixed(2),
+        label: 'Pola',
+        message: `${title ? title + ' — ' : ''}${person.name}`,
         memo: `splitpay-${person.name}`,
         reference: referenceKey,
       });
-      return { name: person.name, referenceKey, payUrl, status: 'pending', amountSol: participantSol };
+      return { name: person.name, referenceKey, payUrl, status: 'pending', amountUsdc: participantUsdc };
     });
-    startSplit({ sessionId, totalSol, eachSol, prices: p, originalAmount: totalAmt, originalCurrency: currency, mode, participants, createdAt: Date.now() });
+    startSplit({
+      sessionId, totalUsdc, eachUsdc, rates: r,
+      originalAmount: totalAmt, originalCurrency: 'MKD',
+      mode, title: title.trim(), participants, createdAt: Date.now(),
+    });
     navigation.navigate('SplitDashboard', { sessionId });
   };
+
+  const handleClearHistory = () => setShowClearConfirm(true);
 
   return (
     <ScreenBackground>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text style={[styles.title, { color: colors.text }]}>Split Bill</Text>
+        {/* Title row with dark mode toggle */}
+        <View style={styles.titleRow}>
+          <Text style={[styles.title, { color: colors.text }]}>Split Bill</Text>
+          <TouchableOpacity
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); toggleTheme(); }}
+            style={[styles.iconBtn, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
+          >
+            <Ionicons name={isDark ? 'sunny-outline' : 'moon-outline'} size={20} color={colors.text} />
+          </TouchableOpacity>
+        </View>
         <Text style={[styles.subtitle, { color: colors.muted }]}>
-          Choose a currency and mode, add names, then generate QR codes.
+          Add friends, enter amounts in MKD, and generate QR codes.
         </Text>
 
         {/* Active sessions banner */}
         {activeSplits.length > 0 && (
           <TouchableOpacity
             style={[styles.activeBanner, { backgroundColor: colors.card, borderColor: colors.border }]}
-            onPress={() => navigation.navigate('SplitDashboard', { sessionId: activeSplits[0].sessionId })}
+            onPress={() => navigation.navigate('SplitDashboard')}
             activeOpacity={0.75}
           >
             <Text style={[styles.activeBannerText, { color: colors.text }]}>
@@ -123,20 +140,6 @@ export default function SplitBillScreen({ navigation }) {
             <Text style={[styles.activeBannerLink, { color: colors.primary }]}>View Dashboard →</Text>
           </TouchableOpacity>
         )}
-
-        {/* Currency selector */}
-        <View style={styles.tabRow}>
-          {CURRENCIES.map(c => (
-            <TouchableOpacity
-              key={c}
-              style={[styles.tab, { backgroundColor: colors.card, borderColor: colors.border },
-                currency === c && { backgroundColor: colors.primary, borderColor: colors.primary }]}
-              onPress={() => setCurrency(c)}
-            >
-              <Text style={[styles.tabText, { color: currency === c ? '#fff' : colors.text }]}>{c}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
 
         {/* Mode toggle */}
         <View style={styles.modeRow}>
@@ -154,16 +157,29 @@ export default function SplitBillScreen({ navigation }) {
           ))}
         </View>
 
+        {/* Optional title */}
+        <View style={styles.field}>
+          <Text style={[styles.fieldLabel, { color: colors.muted }]}>Title (optional)</Text>
+          <TextInput
+            style={[styles.titleInput, { borderColor: colors.inputBorder, color: colors.text, backgroundColor: colors.inputBg }]}
+            value={title}
+            onChangeText={setTitle}
+            placeholder="e.g Beer at Irish Pub"
+            placeholderTextColor={colors.muted}
+            returnKeyType="done"
+          />
+        </View>
+
         {/* Total amount — Divide mode only */}
         {mode === 'divide' && (
           <View style={styles.field}>
-            <Text style={[styles.fieldLabel, { color: colors.muted }]}>Total Amount ({currency})</Text>
+            <Text style={[styles.fieldLabel, { color: colors.muted }]}>Total Amount (MKD)</Text>
             <TextInput
-              style={[styles.bigInput, { borderColor: colors.border, color: colors.text, backgroundColor: colors.surface }]}
+              style={[styles.bigInput, { borderColor: colors.inputBorder, color: colors.text, backgroundColor: colors.inputBg }]}
               keyboardType="decimal-pad"
               value={totalAmount}
               onChangeText={setTotalAmount}
-              placeholder="0.00"
+              placeholder="0 ден"
               placeholderTextColor={colors.muted}
             />
           </View>
@@ -172,15 +188,15 @@ export default function SplitBillScreen({ navigation }) {
         {/* Add person row */}
         <View style={[styles.addCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Text style={[styles.addCardLabel, { color: colors.muted }]}>
-            {mode === 'fixed' ? 'Add person & amount' : 'Add person'}
+            {mode === 'fixed' ? 'Add person & amount (MKD)' : 'Add person'}
           </Text>
           <View style={styles.addRow}>
             <TextInput
               ref={nameRef}
-              style={[styles.addNameInput, { backgroundColor: colors.bg, borderColor: colors.border, color: colors.text }]}
+              style={[styles.addNameInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
               value={nameInput}
               onChangeText={setNameInput}
-              placeholder="Enter name here"
+              placeholder="Name"
               placeholderTextColor={colors.muted}
               returnKeyType={mode === 'fixed' ? 'next' : 'done'}
               onSubmitEditing={() => mode === 'fixed' ? amtRef.current?.focus() : handleAdd()}
@@ -188,11 +204,11 @@ export default function SplitBillScreen({ navigation }) {
             {mode === 'fixed' && (
               <TextInput
                 ref={amtRef}
-                style={[styles.addAmtInput, { backgroundColor: colors.bg, borderColor: colors.border, color: colors.text }]}
+                style={[styles.addAmtInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
                 keyboardType="decimal-pad"
                 value={amountInput}
                 onChangeText={setAmountInput}
-                placeholder={currency}
+                placeholder="MKD"
                 placeholderTextColor={colors.muted}
                 returnKeyType="done"
                 onSubmitEditing={handleAdd}
@@ -206,68 +222,83 @@ export default function SplitBillScreen({ navigation }) {
 
         {people.length === 0 && (
           <Text style={[styles.emptyHint, { color: colors.muted }]}>
-            Add at least 2 people to generate QR codes.
+            Add at least 1 friend to generate QR codes.
           </Text>
         )}
 
         {/* People list */}
         {people.map(person => {
-          const personSol = mode === 'fixed' ? toSol(Number(person.amount) || 0, currency, p) : eachSol;
-          const personEur = personSol * p.solInEur;
-          const personMkd = personSol * p.solInMkd;
+          const personUsdc = mode === 'fixed' ? toUsdc(Number(person.amount) || 0, 'MKD', r) : eachUsdc;
+          const personMkd = mode === 'fixed' ? Number(person.amount) || 0 : eachMkd;
           return (
             <Card key={person.name} style={styles.personCard}>
               <View style={styles.personRow}>
                 <View style={styles.personLeft}>
                   <Text style={[styles.personName, { color: colors.text }]}>{person.name}</Text>
                   {mode === 'fixed' ? (
-                    <Text style={[styles.personAmt, { color: colors.accent }]}>{currency} {person.amount}</Text>
+                    <Text style={[styles.personAmt, { color: colors.text }]}>{mkd(personMkd)}</Text>
                   ) : (
-                    eachSol > 0 && (
-                      <Text style={[styles.personAmt, { color: colors.accent }]}>{eur(personEur)}  ·  {mkd(personMkd)}</Text>
+                    eachUsdc > 0 && (
+                      <Text style={[styles.personAmt, { color: colors.text }]}>{mkd(personMkd)}</Text>
                     )
                   )}
+                  {personUsdc > 0 && (
+                    <Text style={[styles.personUsdc, { color: colors.primary }]}>{usdc(personUsdc)}</Text>
+                  )}
                 </View>
-                <View style={styles.personRight}>
-                  {personSol > 0 && <Text style={[styles.personSol, { color: colors.muted }]}>{sol(personSol)}</Text>}
-                  <TouchableOpacity style={styles.removeBtn} onPress={() => handleRemove(person.name)} activeOpacity={0.75}>
-                    <Text style={[styles.removeBtnText, { color: colors.danger }]}>Remove</Text>
-                  </TouchableOpacity>
-                </View>
+                <TouchableOpacity style={styles.removeBtn} onPress={() => handleRemove(person.name)} activeOpacity={0.75}>
+                  <Text style={[styles.removeBtnText, { color: colors.danger }]}>Remove</Text>
+                </TouchableOpacity>
               </View>
             </Card>
           );
         })}
 
         {/* Preview summary */}
-        {count >= 2 && totalSol > 0 && (
+        {count >= 1 && totalUsdc > 0 && (
           <Card style={styles.previewCard}>
             {mode === 'divide' ? (
               <>
-                <Text style={[styles.previewLabel, { color: colors.muted }]}>Each person pays</Text>
-                <Text style={[styles.previewMain, { color: colors.text }]}>{eur(eachEur)}</Text>
-                <Text style={[styles.previewSub, { color: colors.accent }]}>{mkd(eachMkd)}  ·  {sol(eachSol)}</Text>
+                <Text style={[styles.previewLabel, { color: colors.muted }]}>Each friend pays</Text>
+                <Text style={[styles.previewMain, { color: colors.text }]}>{mkd(eachMkd)}</Text>
+                <Text style={[styles.previewSub, { color: colors.primary }]}>{usdc(eachUsdc)}</Text>
+                <Text style={[styles.previewNote, { color: colors.muted }]}>
+                  Split between {count + 1} people (you + {count} {count === 1 ? 'friend' : 'friends'})
+                  {rates ? '  ·  Live rate' : '  ·  Estimated rate'}
+                </Text>
               </>
             ) : (
               <>
                 <Text style={[styles.previewLabel, { color: colors.muted }]}>Total bill</Text>
-                <Text style={[styles.previewMain, { color: colors.text }]}>{eur(totalEur)}</Text>
-                <Text style={[styles.previewSub, { color: colors.accent }]}>{mkd(totalMkd)}  ·  {sol(totalSol)}</Text>
+                <Text style={[styles.previewMain, { color: colors.text }]}>{mkd(totalMkd)}</Text>
+                <Text style={[styles.previewSub, { color: colors.primary }]}>{usdc(totalUsdc)}</Text>
+                <Text style={[styles.previewNote, { color: colors.muted }]}>
+                  {count} {count === 1 ? 'person' : 'people'}
+                  {rates ? '  ·  Live rate' : '  ·  Estimated rate'}
+                </Text>
               </>
             )}
-            <Text style={[styles.previewNote, { color: colors.muted }]}>
-              {count} {count === 1 ? 'person' : 'people'}
-              {prices ? '  ·  Live rate · CoinGecko' : '  ·  Estimated rate'}
-            </Text>
           </Card>
         )}
 
-        <Button
-          title="Generate QR Codes"
+        {/* Generate QR — prominent button */}
+        <TouchableOpacity
+          style={[
+            styles.generateBtn,
+            canGenerate
+              ? { backgroundColor: colors.primary }
+              : { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#E5E7EB' },
+          ]}
           onPress={canGenerate ? handleGenerate : undefined}
-          variant={canGenerate ? 'primary' : 'secondary'}
-          style={!canGenerate && styles.btnDisabled}
-        />
+          activeOpacity={canGenerate ? 0.8 : 1}
+        >
+          <Text style={[
+            styles.generateBtnText,
+            { color: canGenerate ? '#fff' : (isDark ? colors.muted : '#9CA3AF') },
+          ]}>
+            Generate QR Codes
+          </Text>
+        </TouchableOpacity>
 
         {/* Upgrade modal */}
         <Modal visible={showUpgrade} transparent animationType="fade" onRequestClose={() => setShowUpgrade(false)}>
@@ -289,33 +320,40 @@ export default function SplitBillScreen({ navigation }) {
         {/* Split history */}
         {splitHistory.length > 0 && (
           <>
-            <Text style={[styles.historyTitle, { color: colors.text }]}>Split History</Text>
+            <View style={styles.historyTitleRow}>
+              <Text style={[styles.historyTitle, { color: colors.text }]}>Split History</Text>
+              <TouchableOpacity onPress={handleClearHistory}>
+                <Text style={[styles.clearHistoryBtn, { color: colors.danger }]}>Clear All</Text>
+              </TouchableOpacity>
+            </View>
             {splitHistory.map(session => {
               const date = new Date(session.completedAt ?? session.createdAt);
               const dateStr = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-              const sp = session.prices ?? FALLBACK_PRICES;
-              const totalEurH = session.totalSol * sp.solInEur;
-              const totalMkdH = session.totalSol * sp.solInMkd;
+              const sr = session.rates ?? FALLBACK_RATES;
+              const totalMkdH = (session.totalUsdc ?? 0) * sr.mkdPerUsdc;
               return (
                 <Card key={session.sessionId} style={styles.historyCard}>
                   <View style={styles.historyHeader}>
-                    <Text style={[styles.historyDate, { color: colors.text }]}>{dateStr}</Text>
+                    {session.title ? (
+                      <Text style={[styles.historySessionTitle, { color: colors.text }]}>{session.title}</Text>
+                    ) : null}
+                    <Text style={[styles.historyDate, { color: colors.muted }]}>{dateStr}</Text>
                     <Text style={[styles.historyMode, { color: colors.muted }]}>
-                      {session.mode === 'fixed' ? 'Fixed Price' : 'Divide Total'} · {session.participants.length} people
+                      {session.mode === 'fixed' ? 'Fixed Price' : 'Divide Total'} · {session.participants.length} {session.participants.length === 1 ? 'person' : 'people'}
                     </Text>
                   </View>
-                  <Text style={[styles.historyTotal, { color: colors.text }]}>{eur(totalEurH)}</Text>
-                  <Text style={[styles.historyTotalSub, { color: colors.accent }]}>{mkd(totalMkdH)}  ·  {sol(session.totalSol)}</Text>
+                  <Text style={[styles.historyTotal, { color: colors.text }]}>{mkd(totalMkdH)}</Text>
+                  <Text style={[styles.historyTotalSub, { color: colors.primary }]}>{usdc(session.totalUsdc ?? 0)}</Text>
                   <View style={[styles.historyDivider, { backgroundColor: colors.border }]} />
                   {session.participants.map(pt => {
-                    const ptSol = pt.amountSol ?? session.eachSol;
-                    const ptEur = ptSol * sp.solInEur;
+                    const ptUsdc = pt.amountUsdc ?? session.eachUsdc ?? 0;
+                    const ptMkd = ptUsdc * sr.mkdPerUsdc;
                     return (
                       <View key={pt.name} style={styles.historyRow}>
                         <Text style={[styles.historyPtName, { color: colors.text }]}>{pt.name}</Text>
                         <View style={styles.historyPtAmts}>
-                          <Text style={[styles.historyPtEur, { color: colors.text }]}>{eur(ptEur)}</Text>
-                          <Text style={[styles.historyPtSol, { color: colors.muted }]}>{sol(ptSol)}</Text>
+                          <Text style={[styles.historyPtMkd, { color: colors.text }]}>{mkd(ptMkd)}</Text>
+                          <Text style={[styles.historyPtUsdc, { color: colors.primary }]}>{usdc(ptUsdc)}</Text>
                         </View>
                       </View>
                     );
@@ -326,13 +364,26 @@ export default function SplitBillScreen({ navigation }) {
           </>
         )}
       </ScrollView>
+
+      <ConfirmModal
+        visible={showClearConfirm}
+        title="Clear History"
+        message="Remove all completed split sessions from history?"
+        confirmText="Clear"
+        destructive
+        onCancel={() => setShowClearConfirm(false)}
+        onConfirm={() => { clearSplitHistory(); setShowClearConfirm(false); }}
+      />
     </ScreenBackground>
   );
 }
 
 const styles = StyleSheet.create({
   content: { padding: 20, paddingTop: 58, gap: 14, paddingBottom: 48 },
+
+  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: { fontSize: 30, fontWeight: '900' },
+  iconBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   subtitle: { marginBottom: 4 },
 
   activeBanner: {
@@ -342,16 +393,16 @@ const styles = StyleSheet.create({
   activeBannerText: { fontWeight: '700', fontSize: 14 },
   activeBannerLink: { fontWeight: '800', fontSize: 14 },
 
-  tabRow: { flexDirection: 'row', gap: 8 },
-  tab: { flex: 1, paddingVertical: 11, borderRadius: 12, borderWidth: 1, alignItems: 'center' },
-  tabText: { fontWeight: '800', fontSize: 13 },
-
   modeRow: { flexDirection: 'row', gap: 10 },
   modeBtn: { flex: 1, paddingVertical: 12, borderRadius: 14, borderWidth: 1, alignItems: 'center' },
   modeBtnText: { fontWeight: '800' },
 
   field: { gap: 6 },
   fieldLabel: { fontWeight: '700', fontSize: 13, paddingLeft: 4 },
+  titleInput: {
+    borderWidth: 1, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12,
+    fontSize: 15, fontWeight: '600',
+  },
   bigInput: {
     borderWidth: 1, borderRadius: 16, paddingHorizontal: 18, paddingVertical: 14,
     fontSize: 24, fontWeight: '800',
@@ -375,21 +426,24 @@ const styles = StyleSheet.create({
 
   personCard: { paddingVertical: 12 },
   personRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  personLeft: { flex: 1, gap: 3 },
+  personLeft: { flex: 1, gap: 2 },
   personName: { fontSize: 17, fontWeight: '800' },
-  personAmt: { fontSize: 13, fontWeight: '700' },
-  personRight: { alignItems: 'flex-end', gap: 6 },
-  personSol: { fontSize: 13, fontWeight: '800' },
+  personAmt: { fontSize: 15, fontWeight: '800' },
+  personUsdc: { fontSize: 12, fontWeight: '700' },
   removeBtn: { borderRadius: 10, paddingVertical: 5, paddingHorizontal: 12, backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA' },
   removeBtnText: { fontWeight: '800', fontSize: 13 },
 
   previewCard: { alignItems: 'center', gap: 4 },
   previewLabel: { fontWeight: '700', fontSize: 13 },
   previewMain: { fontSize: 38, fontWeight: '900' },
-  previewSub: { fontWeight: '800', fontSize: 15 },
-  previewNote: { fontSize: 12, marginTop: 4 },
+  previewSub: { fontWeight: '700', fontSize: 15 },
+  previewNote: { fontSize: 12, marginTop: 4, textAlign: 'center' },
 
-  btnDisabled: { opacity: 0.45 },
+  generateBtn: {
+    borderRadius: 16, paddingVertical: 18, alignItems: 'center',
+    shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 8, elevation: 4,
+  },
+  generateBtnText: { fontSize: 18, fontWeight: '900', letterSpacing: 0.3 },
 
   upgradeOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
   upgradeBox: { backgroundColor: '#fff', borderRadius: 24, padding: 28, alignItems: 'center', gap: 12, width: '100%' },
@@ -400,17 +454,20 @@ const styles = StyleSheet.create({
   upgradeLater: { paddingVertical: 8 },
   upgradeLaterText: { fontWeight: '700' },
 
-  historyTitle: { fontSize: 22, fontWeight: '900', marginTop: 8 },
+  historyTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
+  historyTitle: { fontSize: 22, fontWeight: '900' },
+  clearHistoryBtn: { fontWeight: '800', fontSize: 14 },
   historyCard: { gap: 6 },
-  historyHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  historyDate: { fontWeight: '800', fontSize: 14 },
-  historyMode: { fontSize: 12, fontWeight: '700' },
+  historyHeader: { gap: 2 },
+  historySessionTitle: { fontWeight: '900', fontSize: 15 },
+  historyDate: { fontWeight: '700', fontSize: 13 },
+  historyMode: { fontSize: 12, fontWeight: '600' },
   historyTotal: { fontSize: 28, fontWeight: '900' },
   historyTotalSub: { fontSize: 13, fontWeight: '700', marginTop: -2 },
   historyDivider: { height: 1, marginVertical: 6 },
   historyRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 3 },
   historyPtName: { fontWeight: '700', fontSize: 14 },
   historyPtAmts: { alignItems: 'flex-end', gap: 1 },
-  historyPtEur: { fontSize: 14, fontWeight: '800' },
-  historyPtSol: { fontSize: 11, fontWeight: '700' },
+  historyPtMkd: { fontSize: 14, fontWeight: '800' },
+  historyPtUsdc: { fontSize: 11, fontWeight: '700' },
 });

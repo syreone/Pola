@@ -1,6 +1,6 @@
-export const eur = (value) => `€${Number(value || 0).toFixed(2)}`;
+export const usdc = (value) => `${Number(value || 0).toFixed(2)} USDC`;
 export const mkd = (value) => `${Number(value || 0).toFixed(0)} ден`;
-export const sol = (value) => `${Number(value || 0).toFixed(4)} SOL`;
+export const eur = (value) => `€${Number(value || 0).toFixed(2)}`;
 
 export function relativeTime(timestamp) {
   if (!timestamp) return '';
@@ -25,7 +25,8 @@ export function formatDateTime(timestamp) {
   return d.toLocaleString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
-export function eurToDemoSol(eurAmount) {
-  // Demo conversion only. For production, fetch live SOL/EUR pricing from a trusted price source.
-  return Number(eurAmount || 0) / 140;
+export function formatDate(timestamp) {
+  if (!timestamp) return '';
+  const d = new Date(timestamp);
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }

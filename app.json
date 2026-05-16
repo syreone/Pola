@@ -1,26 +1,33 @@
 {
   "expo": {
-    "name": "SplitPay",
-    "slug": "splitpay",
+    "name": "Pola",
+    "slug": "pola",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
-    "scheme": "splitpay",
+    "userInterfaceStyle": "automatic",
+    "scheme": "pola",
     "splash": {
-      "image": "./assets/splash.png",
+      "image": "./assets/pola-logo-light.png",
       "resizeMode": "contain",
-      "backgroundColor": "#F7F8FB"
+      "backgroundColor": "#EEF2FF"
     },
     "android": {
-      "package": "com.demo.splitpay",
-      "permissions": ["CAMERA"]
+      "package": "com.demo.pola",
+      "permissions": ["CAMERA"],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#EEF2FF"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "com.demo.pola"
     },
     "plugins": [
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow SplitPay to scan Solana Pay QR codes."
+          "cameraPermission": "Allow Pola to scan Solana Pay QR codes."
         }
       ]
     ]

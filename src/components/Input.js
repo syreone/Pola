@@ -10,8 +10,8 @@ export default function Input({ style, ...props }) {
       style={[
         styles.input,
         {
-          backgroundColor: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(224,232,255,0.55)',
-          borderColor: isDark ? 'rgba(255,255,255,0.16)' : 'rgba(100,140,255,0.30)',
+          backgroundColor: colors.inputBg,
+          borderColor: colors.inputBorder,
           color: colors.text,
         },
         style,

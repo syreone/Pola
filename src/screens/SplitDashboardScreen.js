@@ -1,50 +1,97 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView,
-  TouchableOpacity, Alert, Share, ActivityIndicator,
+  TouchableOpacity, Share,
 } from 'react-native';
+import ConfirmModal from '../components/ConfirmModal';
 import QRCode from 'react-native-qrcode-svg';
 import Card from '../components/Card';
 import ScreenBackground from '../components/ScreenBackground';
 import { useTheme } from '../context/ThemeContext';
 import { useSplitPay } from '../data/SplitPayContext';
 import { getSignaturesForAddress } from '../utils/solanaRpc';
-import { eur, mkd, sol } from '../utils/format';
-import { FALLBACK_PRICES } from '../utils/priceService';
+import { usdc, mkd, formatDate } from '../utils/format';
+import { FALLBACK_RATES } from '../utils/priceService';
 
 const POLL_MS = 4000;
 
 function StatusBadge({ status, colors }) {
-  const cfg = {
-    pending: { label: 'No action', color: colors.muted },
-    scanned: { label: 'Scanned',   color: colors.primary },
-    paid:    { label: 'Paid ✓',    color: colors.success },
-  }[status] ?? { label: 'No action', color: colors.muted };
+  const isPaid = status === 'paid';
+  return (
+    <View style={[
+      styles.badge,
+      { borderColor: isPaid ? colors.success : colors.muted, backgroundColor: colors.card },
+    ]}>
+      <Text style={[styles.badgeText, { color: isPaid ? colors.success : colors.muted }]}>
+        {isPaid ? 'Paid' : 'Unpaid'}
+      </Text>
+    </View>
+  );
+}
+
+function SplitListCard({ session, onPress, onDelete, colors }) {
+  const r = session.rates ?? FALLBACK_RATES;
+  const paidCount = session.participants.filter(p => p.status === 'paid').length;
+  const total = session.participants.length;
+  const allPaid = paidCount === total;
+  const dateStr = formatDate(session.createdAt);
 
   return (
-    <View style={[styles.badge, { borderColor: cfg.color, backgroundColor: colors.card }]}>
-      <Text style={[styles.badgeText, { color: cfg.color }]}>{cfg.label}</Text>
-    </View>
+    <TouchableOpacity
+      style={[styles.listCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+      onPress={onPress}
+      activeOpacity={0.75}
+    >
+      <View style={styles.listCardTop}>
+        <View style={styles.listCardLeft}>
+          {session.title ? (
+            <Text style={[styles.listCardTitle, { color: colors.text }]} numberOfLines={1}>{session.title}</Text>
+          ) : null}
+          <Text style={[styles.listCardDate, { color: colors.muted }]}>{dateStr}</Text>
+          <Text style={[styles.listCardPeople, { color: colors.muted }]}>
+            {total} {total === 1 ? 'person' : 'people'}
+          </Text>
+        </View>
+        <View style={styles.listCardRight}>
+          <Text style={[styles.listCardAmount, { color: colors.text }]}>{mkd((session.totalUsdc ?? 0) * r.mkdPerUsdc)}</Text>
+          <View style={[
+            styles.listCardStatus,
+            { backgroundColor: allPaid ? colors.success : colors.primary },
+          ]}>
+            <Text style={styles.listCardStatusText}>{paidCount}/{total} paid</Text>
+          </View>
+        </View>
+      </View>
+      <View style={styles.listCardActions}>
+        <Text style={[styles.listCardView, { color: colors.primary }]}>View Details →</Text>
+        <TouchableOpacity onPress={onDelete}>
+          <Text style={[styles.listCardDelete, { color: colors.danger }]}>Delete</Text>
+        </TouchableOpacity>
+      </View>
+    </TouchableOpacity>
   );
 }
 
 export default function SplitDashboardScreen({ navigation, route }) {
   const { colors } = useTheme();
   const {
-    activeSplits, markParticipantPaid, markParticipantScanned,
+    activeSplits, markParticipantPaid,
     completeSplit, clearSplit, refreshBalance,
   } = useSplitPay();
 
   const paramSessionId = route.params?.sessionId;
-  const session = paramSessionId
-    ? (activeSplits.find(s => s.sessionId === paramSessionId) ?? activeSplits[0])
-    : activeSplits[0];
+  const [selectedSessionId, setSelectedSessionId] = useState(paramSessionId ?? null);
+  const [confirmModal, setConfirmModal] = useState(null);
 
-  const otherSessions = activeSplits.filter(s => s.sessionId !== session?.sessionId);
+  const session = selectedSessionId
+    ? (activeSplits.find(s => s.sessionId === selectedSessionId) ?? null)
+    : null;
+
+  const showList = !session;
   const [expandedQR, setExpandedQR] = useState(null);
   const pollRef = useRef(null);
 
-  // On-chain payment polling
+  // On-chain payment polling for the selected session
   useEffect(() => {
     if (!session) return;
     const poll = async () => {
@@ -61,51 +108,49 @@ export default function SplitDashboardScreen({ navigation, route }) {
     return () => clearInterval(pollRef.current);
   }, [session?.sessionId]);
 
-  // Simulate "scanned" after 10–15s for demo
-  const simRef = useRef(session);
-  useEffect(() => {
-    const s = simRef.current;
-    if (!s) return;
-    const timers = s.participants
-      .filter(pt => pt.status === 'pending')
-      .map(pt => {
-        const delay = 10000 + Math.random() * 5000;
-        return setTimeout(() => markParticipantScanned(s.sessionId, pt.name), delay);
-      });
-    return () => timers.forEach(clearTimeout);
-  }, []);
-
   const handleShare = async (participant) => {
-    const dSol = participant.amountSol ?? session.eachSol;
-    const p = session.prices ?? FALLBACK_PRICES;
+    const r = session.rates ?? FALLBACK_RATES;
+    const dUsdc = participant.amountUsdc ?? session.eachUsdc ?? 0;
     try {
-      await Share.share({ message: participant.payUrl, title: `Pay your share: ${eur(dSol * p.solInEur)}` });
+      await Share.share({ message: participant.payUrl, title: `Pay your share: ${usdc(dUsdc)}` });
     } catch { /* dismissed */ }
   };
 
-  const handlePoke = (participant) => {
-    Alert.alert('Poke sent!', `Hey ${participant.name}, you haven't paid your part yet!`, [{ text: 'OK' }]);
-  };
-
   const handleComplete = () => {
-    Alert.alert('Complete Session', 'Save this split to history and close it?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Complete', onPress: () => { completeSplit(session.sessionId); navigation.goBack(); } },
-    ]);
+    setConfirmModal({
+      title: 'Complete Session',
+      message: 'Save this split to history and close it?',
+      confirmText: 'Complete',
+      destructive: false,
+      onConfirm: () => {
+        completeSplit(session.sessionId);
+        if (activeSplits.length <= 1) navigation.goBack();
+        else setSelectedSessionId(null);
+      },
+    });
   };
 
-  const handleDelete = () => {
-    Alert.alert('Delete Split', 'This will permanently discard this split without saving to history.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => { clearSplit(session.sessionId); navigation.goBack(); } },
-    ]);
+  const handleDelete = (sessionId) => {
+    setConfirmModal({
+      title: 'Delete Split',
+      message: 'This will permanently discard this split without saving to history.',
+      confirmText: 'Delete',
+      destructive: true,
+      onConfirm: () => {
+        clearSplit(sessionId);
+        if (sessionId === selectedSessionId) {
+          if (activeSplits.length <= 1) navigation.goBack();
+          else setSelectedSessionId(null);
+        }
+      },
+    });
   };
 
-  if (!session) {
+  if (activeSplits.length === 0) {
     return (
       <ScreenBackground>
         <View style={styles.centered}>
-          <Text style={[styles.emptyTitle, { color: colors.text }]}>No active split</Text>
+          <Text style={[styles.emptyTitle, { color: colors.text }]}>No active splits</Text>
           <Text style={[styles.emptyText, { color: colors.muted }]}>Go to Split Bill to start one.</Text>
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Text style={[styles.backText, { color: colors.primary }]}>← Go back</Text>
@@ -115,41 +160,60 @@ export default function SplitDashboardScreen({ navigation, route }) {
     );
   }
 
+  // LIST VIEW
+  if (showList) {
+    return (
+      <ScreenBackground>
+        <ScrollView contentContainerStyle={styles.content}>
+          <View style={styles.topBar}>
+            <TouchableOpacity onPress={() => navigation.goBack()}>
+              <Text style={[styles.backText, { color: colors.primary }]}>← Back</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={[styles.title, { color: colors.text }]}>Active Splits</Text>
+          <Text style={[styles.subtitle, { color: colors.muted }]}>
+            {activeSplits.length} active split{activeSplits.length !== 1 ? 's' : ''} — tap to manage
+          </Text>
+          {activeSplits.map(s => (
+            <SplitListCard
+              key={s.sessionId}
+              session={s}
+              colors={colors}
+              onPress={() => setSelectedSessionId(s.sessionId)}
+              onDelete={() => handleDelete(s.sessionId)}
+            />
+          ))}
+        </ScrollView>
+      </ScreenBackground>
+    );
+  }
+
+  // DETAIL VIEW
   const paidCount = session.participants.filter(pt => pt.status === 'paid').length;
   const total = session.participants.length;
   const paidPct = total > 0 ? (paidCount / total) * 100 : 0;
   const allPaid = paidCount === total;
   const remaining = total - paidCount;
-  const p = session.prices ?? FALLBACK_PRICES;
+  const r = session.rates ?? FALLBACK_RATES;
 
   return (
     <ScreenBackground>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.topBar}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Text style={[styles.backText, { color: colors.primary }]}>← Back</Text>
+          <TouchableOpacity onPress={() => activeSplits.length > 1 ? setSelectedSessionId(null) : navigation.goBack()}>
+            <Text style={[styles.backText, { color: colors.primary }]}>
+              {activeSplits.length > 1 ? '← All Splits' : '← Back'}
+            </Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={handleDelete}>
+          <TouchableOpacity onPress={() => handleDelete(session.sessionId)}>
             <Text style={[styles.deleteText, { color: colors.danger }]}>Delete Split</Text>
           </TouchableOpacity>
         </View>
 
-        <Text style={[styles.title, { color: colors.text }]}>Split Dashboard</Text>
-
-        {/* Other active session banner */}
-        {otherSessions.map(s => (
-          <TouchableOpacity
-            key={s.sessionId}
-            style={[styles.otherBanner, { backgroundColor: colors.card, borderColor: colors.border }]}
-            onPress={() => navigation.replace('SplitDashboard', { sessionId: s.sessionId })}
-            activeOpacity={0.75}
-          >
-            <Text style={[styles.otherBannerText, { color: colors.primary }]}>
-              Another active split · {s.participants.length} people
-            </Text>
-            <Text style={[styles.otherBannerLink, { color: colors.primary }]}>View →</Text>
-          </TouchableOpacity>
-        ))}
+        <Text style={[styles.title, { color: colors.text }]}>
+          {session.title || 'Split Dashboard'}
+        </Text>
+        <Text style={[styles.dateLabel, { color: colors.muted }]}>{formatDate(session.createdAt)}</Text>
 
         {/* Progress bar */}
         <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
@@ -162,64 +226,90 @@ export default function SplitDashboardScreen({ navigation, route }) {
 
         {/* All-paid banner */}
         {allPaid && (
-          <Card style={styles.allPaidCard}>
-            <Text style={[styles.allPaidText, { color: colors.success }]}>All payments confirmed on Solana!</Text>
-            <TouchableOpacity style={[styles.completeBtn, { backgroundColor: colors.success }]} onPress={handleComplete}>
-              <Text style={styles.completeBtnText}>Complete Session →</Text>
-            </TouchableOpacity>
+          <Card>
+            <View style={styles.allPaidInner}>
+              <View style={[styles.allPaidIcon, { backgroundColor: colors.isDark ? 'rgba(74,222,128,0.15)' : '#DCFCE7' }]}>
+                <Text style={[styles.allPaidIconText, { color: colors.success }]}>✓</Text>
+              </View>
+              <Text style={[styles.allPaidTitle, { color: colors.success }]}>All payments confirmed!</Text>
+              <Text style={[styles.allPaidSub, { color: colors.muted }]}>Everyone has paid their share</Text>
+              <View style={[styles.allPaidDivider, { backgroundColor: colors.border }]} />
+              <TouchableOpacity style={[styles.completeBtn, { backgroundColor: colors.success }]} onPress={handleComplete}>
+                <Text style={styles.completeBtnText}>Complete Session</Text>
+              </TouchableOpacity>
+            </View>
           </Card>
         )}
 
         {/* Per-person cards */}
         {session.participants.map(participant => {
           const isExpanded = expandedQR === participant.name;
-          const dSol = participant.amountSol ?? session.eachSol;
+          const dUsdc = participant.amountUsdc ?? session.eachUsdc ?? 0;
+          const dMkd = dUsdc * r.mkdPerUsdc;
+
 
           return (
-            <Card key={participant.name} style={styles.participantCard}>
-              <TouchableOpacity style={styles.cardHeader} onPress={() => setExpandedQR(isExpanded ? null : participant.name)} activeOpacity={0.7}>
-                <View style={styles.headerLeft}>
-                  <Text style={[styles.participantName, { color: colors.text }]}>{participant.name}</Text>
-                  <Text style={[styles.tapHint, { color: colors.muted }]}>
-                    {isExpanded ? 'Tap to hide QR ▲' : 'Tap to show QR ▼'}
-                  </Text>
-                </View>
-                <StatusBadge status={participant.status} colors={colors} />
-              </TouchableOpacity>
-
-              {isExpanded && (
-                <View style={styles.qrSection}>
-                  <View style={[styles.qrBox, { backgroundColor: colors.surface }]}>
-                    <QRCode value={participant.payUrl} size={200} />
+            <Card key={participant.name}>
+              <View style={styles.participantInner}>
+                {/* Name + amounts + badge */}
+                <View style={styles.cardHeader}>
+                  <View style={styles.headerLeft}>
+                    <Text style={[styles.participantName, { color: colors.text }]}>{participant.name}</Text>
+                    <Text style={[styles.participantMkd, { color: colors.text }]}>{mkd(dMkd)}</Text>
+                    <Text style={[styles.participantUsdc, { color: colors.primary }]}>{usdc(dUsdc)}</Text>
                   </View>
-                  <Text style={[styles.qrHint, { color: colors.muted }]}>Show this QR to {participant.name}</Text>
+                  <StatusBadge status={participant.status} colors={colors} />
                 </View>
-              )}
 
-              <View style={styles.actionRow}>
-                <View style={styles.amountCol}>
-                  <Text style={[styles.actionEur, { color: colors.text }]}>{eur(dSol * p.solInEur)}</Text>
-                  <Text style={[styles.actionMkd, { color: colors.muted }]}>{mkd(dSol * p.solInMkd)}</Text>
-                  <Text style={[styles.actionSol, { color: colors.accent }]}>{sol(dSol)}</Text>
-                </View>
-                <View style={styles.btnCol}>
-                  <TouchableOpacity style={[styles.shareBtn, { backgroundColor: colors.primary }]} onPress={() => handleShare(participant)} activeOpacity={0.75}>
-                    <Text style={styles.shareBtnText}>Share Link</Text>
+                {/* QR code */}
+                {isExpanded && (
+                  <View style={styles.qrSection}>
+                    <View style={[styles.qrBox, { backgroundColor: '#fff' }]}>
+                      <QRCode value={participant.payUrl} size={220} />
+                    </View>
+                    <Text style={[styles.qrHint, { color: colors.muted }]}>
+                      {participant.name} scans this with Phantom to pay
+                    </Text>
+                  </View>
+                )}
+
+                {/* Divider before buttons */}
+                <View style={[styles.participantDivider, { backgroundColor: colors.border }]} />
+
+                {/* Buttons */}
+                <View style={styles.btnStack}>
+                  <TouchableOpacity
+                    style={[styles.qrToggleBtn, { backgroundColor: isExpanded ? colors.border : colors.primary }]}
+                    onPress={() => setExpandedQR(isExpanded ? null : participant.name)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.qrToggleBtnText, { color: isExpanded ? colors.text : '#fff' }]}>
+                      {isExpanded ? 'Hide QR Code ▲' : 'Show QR Code ▼'}
+                    </Text>
                   </TouchableOpacity>
-                  {participant.status === 'scanned' && (
-                    <TouchableOpacity style={[styles.pokeBtn, { backgroundColor: colors.card, borderColor: colors.border }]} onPress={() => handlePoke(participant)} activeOpacity={0.75}>
-                      <Text style={[styles.pokeBtnText, { color: colors.primary }]}>Poke 👋</Text>
-                    </TouchableOpacity>
-                  )}
-                  {participant.status === 'pending' && (
-                    <ActivityIndicator size="small" color={colors.muted} />
-                  )}
+                  <TouchableOpacity
+                    style={[styles.shareBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+                    onPress={() => handleShare(participant)}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={[styles.shareBtnText, { color: colors.primary }]}>Share Link</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             </Card>
           );
         })}
       </ScrollView>
+
+      <ConfirmModal
+        visible={!!confirmModal}
+        title={confirmModal?.title}
+        message={confirmModal?.message}
+        confirmText={confirmModal?.confirmText}
+        destructive={confirmModal?.destructive}
+        onCancel={() => setConfirmModal(null)}
+        onConfirm={() => { confirmModal?.onConfirm(); setConfirmModal(null); }}
+      />
     </ScreenBackground>
   );
 }
@@ -233,48 +323,63 @@ const styles = StyleSheet.create({
   deleteText: { fontWeight: '700', fontSize: 15 },
 
   title: { fontSize: 30, fontWeight: '900', marginBottom: 2 },
+  subtitle: { fontSize: 14, marginBottom: 4 },
+  dateLabel: { fontSize: 13, fontWeight: '700', marginBottom: 6 },
 
-  otherBanner: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    borderRadius: 12, padding: 12, borderWidth: 1,
+  // List view
+  listCard: {
+    borderRadius: 16, borderWidth: 1, padding: 16, gap: 12,
   },
-  otherBannerText: { fontWeight: '700', fontSize: 13 },
-  otherBannerLink: { fontWeight: '900', fontSize: 13 },
+  listCardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  listCardLeft: { flex: 1, gap: 3 },
+  listCardTitle: { fontSize: 16, fontWeight: '900' },
+  listCardDate: { fontSize: 13, fontWeight: '700' },
+  listCardPeople: { fontSize: 12, fontWeight: '600' },
+  listCardRight: { alignItems: 'flex-end', gap: 6 },
+  listCardAmount: { fontSize: 18, fontWeight: '900' },
+  listCardStatus: { borderRadius: 20, paddingVertical: 3, paddingHorizontal: 10 },
+  listCardStatusText: { color: '#fff', fontWeight: '800', fontSize: 12 },
+  listCardActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 4, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' },
+  listCardView: { fontWeight: '800', fontSize: 14 },
+  listCardDelete: { fontWeight: '700', fontSize: 13 },
 
+  // Progress
   progressTrack: { height: 10, borderRadius: 5, overflow: 'hidden' },
   progressFill: { height: 10, borderRadius: 5 },
   progressLabel: { fontSize: 14, fontWeight: '900' },
   progressSub: { fontSize: 13, marginTop: -4 },
 
-  allPaidCard: { alignItems: 'center', gap: 10 },
-  allPaidText: { fontWeight: '900', fontSize: 16 },
-  completeBtn: { borderRadius: 14, paddingVertical: 12, paddingHorizontal: 24 },
-  completeBtnText: { color: '#fff', fontWeight: '900', fontSize: 15 },
+  // All-paid card — inner wrapper (Card already has padding:18)
+  allPaidInner: { alignItems: 'center', gap: 12, paddingVertical: 10 },
+  allPaidIcon: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center' },
+  allPaidIconText: { fontSize: 36, fontWeight: '900' },
+  allPaidTitle: { fontWeight: '900', fontSize: 20 },
+  allPaidSub: { fontSize: 13, textAlign: 'center', color: '#6B7280' },
+  allPaidDivider: { height: 1, width: '100%', marginVertical: 4 },
+  completeBtn: { borderRadius: 14, paddingVertical: 16, width: '100%', alignItems: 'center' },
+  completeBtnText: { color: '#fff', fontWeight: '900', fontSize: 16 },
 
-  participantCard: { gap: 12 },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  headerLeft: { gap: 2, flex: 1 },
-  participantName: { fontSize: 18, fontWeight: '900' },
-  tapHint: { fontSize: 11, fontWeight: '600' },
+  // Participant cards — inner wrapper applies the gap
+  participantInner: { gap: 14 },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  headerLeft: { gap: 3, flex: 1 },
+  participantName: { fontSize: 17, fontWeight: '900' },
+  participantMkd: { fontSize: 24, fontWeight: '900' },
+  participantUsdc: { fontSize: 13, fontWeight: '700' },
 
   badge: { borderRadius: 20, paddingVertical: 4, paddingHorizontal: 10, borderWidth: 1 },
   badgeText: { fontWeight: '800', fontSize: 12 },
 
-  qrSection: { alignItems: 'center', gap: 10, paddingVertical: 8 },
-  qrBox: { padding: 14, borderRadius: 16, elevation: 2, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8 },
-  qrHint: { fontSize: 13, fontWeight: '600' },
+  participantDivider: { height: 1 },
+  qrSection: { alignItems: 'center', gap: 12, paddingVertical: 4 },
+  qrBox: { padding: 16, borderRadius: 16, elevation: 2, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8 },
+  qrHint: { fontSize: 13, fontWeight: '600', textAlign: 'center' },
 
-  actionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
-  amountCol: { gap: 2 },
-  actionEur: { fontSize: 20, fontWeight: '900' },
-  actionMkd: { fontSize: 13, fontWeight: '700' },
-  actionSol: { fontSize: 13, fontWeight: '700' },
-
-  btnCol: { gap: 8, alignItems: 'flex-end' },
-  shareBtn: { borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14 },
-  shareBtnText: { color: '#fff', fontWeight: '800', fontSize: 13 },
-  pokeBtn: { borderRadius: 12, borderWidth: 1, paddingVertical: 10, paddingHorizontal: 14 },
-  pokeBtnText: { fontWeight: '800', fontSize: 13 },
+  btnStack: { gap: 10 },
+  qrToggleBtn: { borderRadius: 12, paddingVertical: 15, alignItems: 'center' },
+  qrToggleBtnText: { fontWeight: '800', fontSize: 15 },
+  shareBtn: { borderRadius: 12, paddingVertical: 13, alignItems: 'center', borderWidth: 1 },
+  shareBtnText: { fontWeight: '800', fontSize: 14 },
 
   emptyTitle: { fontSize: 22, fontWeight: '900', marginBottom: 8 },
   emptyText: { marginBottom: 20 },
