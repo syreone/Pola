@@ -1,73 +1,47 @@
-# SplitPay
+# Pola
 
-A stage-demo Expo React Native app for Venmo/CashApp-style peer-to-peer payments using Phantom wallet concepts, Solana Devnet, Solana Pay QR codes, and a QR scanner.
+A peer-to-peer mobile payment app built on Solana. Connect your Phantom wallet, send and request USDC, and split bills with friends — each person gets their own Solana Pay QR code.
 
-## Demo Scope
+Built with Expo (React Native) as a fintech demo showcasing how blockchain technology can solve real-world payment settlement problems.
 
-This project is intentionally barebones and demo-focused. It includes:
+## Features
 
-- Connect Wallet screen with Phantom-style button and mocked connected address
-- Home screen with EUR + SOL Devnet balance placeholder
+- Connect Wallet screen with Phantom deep-link integration
+- Home screen with MKD + USDC Devnet balance
 - Request Money flow with Solana Pay-compatible QR code generation
 - Send Money flow with real camera QR scanner via `expo-camera`
-- Phantom/Solana Pay transaction attempt hook through `Linking.openURL`
-- Mocked success screen so the live demo does not fail because of wallet/network speed
-- Split Bill flow with typed friend names and separate QR code per friend
-- Mock transaction history
-- Clean reusable components
+- Phantom/Solana Pay transaction hook through `Linking.openURL`
+- Success screen and payment confirmations
+- Split Bill flow — enter friend names and a total, each person gets their own QR code
+- Active split dashboard to track who has paid and who hasn't
+- Real transaction history with transaction details
+- Dark / light theme
+- Clean reusable component library
 
-## Install
+## Tech Stack
+
+| | |
+|---|---|
+| Framework | Expo SDK 54 / React Native 0.81 |
+| Blockchain | Solana Devnet (JSON-RPC) |
+| Payments | Solana Pay transfer request spec |
+| Wallet | Phantom deep-link integration |
+| Crypto primitives | `tweetnacl`, `bs58` |
+| QR | `react-native-qrcode-svg` + Expo Camera |
+| Exchange rates | open.er-api.com (USD → MKD, 5min cache) |
+
+## Prerequisites
+
+- [Node.js](https://nodejs.org) 18+
+- [Expo Go](https://expo.dev/go) installed on your phone
+- [Phantom wallet](https://phantom.app) on the same phone for live transaction flows
+
+## Run
 
 ```bash
 npm install
-npm start
+npx expo start --tunnel
 ```
 
-Then press `a` to run on Android, or scan the Expo QR code with Expo Go.
+Scan the QR code displayed in your terminal with Expo Go. Phantom wallet is required on the same device for real transaction testing.
 
-## Important Notes
-
-### Solana Pay
-
-The app builds Solana Pay transfer request URLs in `src/utils/solanaPay.js`:
-
-```txt
-solana:<recipient>?amount=<amount>&label=<label>&message=<message>&memo=<memo>
-```
-
-The demo recipient wallet is currently the system program placeholder:
-
-```js
-11111111111111111111111111111111
-```
-
-Replace it with your real Devnet receiving wallet before testing with Phantom.
-
-### Phantom / Devnet
-
-The `openSolanaPayUrl` function attempts to open a Solana Pay URL. For a deeper real integration, replace the mocked wallet connection with Phantom deeplinks or a Solana mobile wallet adapter flow.
-
-### QR Scanner
-
-`SendMoneyScreen.js` uses Expo Camera's `CameraView` and QR barcode scanning. There is also a `Use Demo QR` fallback for stage reliability.
-
-## Suggested 40-hour build/demo plan
-
-1. Run and verify navigation.
-2. Replace the demo recipient wallet with your Devnet wallet.
-3. Test Request Money QR generation.
-4. Scan the QR from another device using Send Money.
-5. Try opening the QR with Phantom on Android.
-6. Keep mocked success enabled for the stage demo.
-7. Polish friend names and transaction examples before presenting.
-
-## Production TODOs
-
-- Real Phantom wallet authorization
-- Real wallet public key state
-- Devnet network validation
-- Transaction signature capture
-- Transaction confirmation polling
-- Real balance fetching
-- Real contact/friend system
-- Backend only if needed for users, invoices, or transaction reconciliation
