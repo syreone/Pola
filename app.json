@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "SplitPay",
+    "slug": "splitpay",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "scheme": "splitpay",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F7F8FB"
+    },
+    "android": {
+      "package": "com.demo.splitpay",
+      "permissions": ["CAMERA"]
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow SplitPay to scan Solana Pay QR codes."
+        }
+      ]
+    ]
+  }
+}
