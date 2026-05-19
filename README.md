@@ -1,6 +1,6 @@
 # Pola
 
-A peer-to-peer mobile payment app built on Solana. Connect your Phantom wallet, send and request USDC, and split bills with friends — each person gets their own Solana Pay QR code.
+A mobile payment app built on Solana. Connect your Phantom wallet, send and request USDC, and split bills with friends — each person gets their own Solana Pay QR code.
 
 Built with Expo (React Native) as a fintech demo showcasing how blockchain technology can solve real-world payment settlement problems.
 
