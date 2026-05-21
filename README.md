@@ -2,7 +2,7 @@
 
 <table>
 <tr>
-<td width="40%" valign="top">
+<td width="40%" valign="middle">
 
 A mobile payment app built on Solana. Connect your Phantom wallet, send and request USDC, and split bills with friends - each person gets their own Solana Pay QR code.
 
