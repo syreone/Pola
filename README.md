@@ -2,9 +2,9 @@
 
 <table>
 <tr>
-<td width="40%" valign="middle">
+<td width="60%" valign="top">
 
-A mobile payment app built on Solana. Connect your Phantom wallet, send and request USDC, and split bills with friends - each person gets their own Solana Pay QR code.
+A mobile payment app built on Solana. Connect your Phantom wallet, send and request USDC, and split bills with friends — each person gets their own Solana Pay QR code.
 
 Built with Expo (React Native) as a fintech demo showcasing how blockchain technology can solve real-world payment settlement problems.
 
@@ -16,12 +16,14 @@ Built with Expo (React Native) as a fintech demo showcasing how blockchain techn
 - Send Money flow with real camera QR scanner
 - Split Bill flow — each person gets their own QR code
 - Real transaction history
-
+- Dark / light theme
 
 </td>
-<td width="40%" valign="middle">
+<td width="40%" valign="top">
 
-<img src="assets/screenshot-home.png" alt="Pola home screen" width="280">
+<div align="center">
+  <img src="assets/screenshot-home.png" alt="Pola home screen" width="280">
+</div>
 
 </td>
 </tr>
@@ -47,7 +49,7 @@ Built with Expo (React Native) as a fintech demo showcasing how blockchain techn
 
 ## Run
 
-
+bash
 npm install
 npx expo start --tunnel
 
