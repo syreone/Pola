@@ -49,8 +49,9 @@ Built with Expo (React Native) as a fintech demo showcasing how blockchain techn
 
 ## Run
 
-bash
+```bash
 npm install
 npx expo start --tunnel
+```
 
 Scan the QR code displayed in your terminal with Expo Go. Phantom wallet is required on the same device for real transaction testing.
